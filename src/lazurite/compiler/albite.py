@@ -2,7 +2,6 @@ import subprocess
 
 from lazurite.material.stage import ShaderStage
 from lazurite.material.platform import ShaderPlatform
-from lazurite.tempfile import CustomTempFile
 from .albite_container import AlbiteResult, parse_stage
 from .macro_define import MacroDefine
 
@@ -79,28 +78,23 @@ class AlbiteCompiler:
         if options:
             args.extend(options)
 
-        with CustomTempFile() as f:
-            f.close()
-            args.extend(("-o", f.name))
+        # Albite writes the compiled container to stdout when no -o is given.
+        result = subprocess.run(args, capture_output=True)
 
-            result = subprocess.run(args, capture_output=True)
+        # stdout is the binary payload, so only stderr is treated as log output.
+        log = []
+        if result.stderr:
+            log.append(result.stderr.decode(errors="replace"))
 
-            log = []
-            if result.stdout:
-                log.append(result.stdout.decode())
-            if result.stderr:
-                log.append(result.stderr.decode())
+        has_log = bool(log)
+        log = "\n\n".join([""] + log + ["Command: " + " ".join(args)])
 
-            has_log = bool(log)
-            log = "\n\n".join([""] + log + ["Command: " + " ".join(args)])
+        if result.returncode:
+            raise Exception(log)
 
-            if result.returncode:
-                raise Exception(log)
+        if has_log:
+            print(log)
 
-            if has_log:
-                print(log)
-
-            with open(f.name, "rb") as output:
-                data = output.read()
+        data = result.stdout
 
         return parse_stage(data, platform, stage)
